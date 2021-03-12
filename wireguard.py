@@ -12,7 +12,7 @@ from typing import OrderedDict
 
 # need to configure this per user
 puppetRoot = '/Users/aldrichco/Work/puppet'
-phabAPIToken = "api-obvnfidxhgvd6o5hrfzavvu2i5ig"
+phabAPIToken = "api-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 phabHost = "https://phabricator.tools.flnltd.com/api/"
 phab = Phabricator(host=phabHost, token=phabAPIToken)
 wireguardManifestFilePath = "manifests/hieradata/role/wireguard_server.yaml"
