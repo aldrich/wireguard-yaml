@@ -6,8 +6,8 @@ setup(
     py_modules=['wireguard'],
     install_requires=[
         'click',
+        'gitpython',
         'phabricator',
-        # 'pyyaml',
         'ruamel.yaml'
     ],
     entry_points='''

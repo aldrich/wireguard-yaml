@@ -1,6 +1,7 @@
 import base64
 import click
 import difflib
+import git
 import ipaddress
 import re
 import ruamel.yaml
@@ -12,7 +13,7 @@ from typing import OrderedDict
 
 # need to configure this per user
 puppetRoot = '/Users/aldrichco/Work/puppet'
-phabAPIToken = "api-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+phabAPIToken = "api-7unflhaiccokaom4dzbavawvzoyo"
 phabHost = "https://phabricator.tools.flnltd.com/api/"
 phab = Phabricator(host=phabHost, token=phabAPIToken)
 wireguardManifestFilePath = "manifests/hieradata/role/wireguard_server.yaml"
@@ -67,7 +68,7 @@ def getNextValidIpAddress(peersYamlObj):
 @click.command()
 @click.option('-u', '--username', prompt='Username', help='Phabricator username of the staff requesting vpn.')
 @click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
-def cli(username, publickey):
+def generateDiff(username, publickey):
 
     fileContents = getWireGuardManifestFileContents().decode('utf-8')
 
@@ -174,6 +175,32 @@ I would like VPN access for {username}. This is the Wireguard public key: `{publ
     click.echo(
         f'Maniphest ticket created. Go to https://phabricator.tools.flnltd.com/T{ticketId} \
 and link it to the created revision.')
+
+
+def cli():
+    # generateDiff()
+
+    gitOps('aco22')
+
+
+# https://www.devdungeon.com/content/working-git-repositories-python
+def gitOps(username):
+    click.echo('Gonna commit the changes you make with python!')
+
+    try:
+        repo = git.Repo(puppetRoot)
+    except:
+        click.echo('Unable to find the puppet repo. Terminating')
+        return
+
+    if repo.is_dirty(untracked_files=True):
+        click.echo(
+            'there are changes. Please make sure to clean them up first and then try again.')
+        return
+
+    # go to master
+    # check if it's
+    # switch to new branch, off master
 
 
 if __name__ == '__main__':
