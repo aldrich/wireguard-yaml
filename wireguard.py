@@ -137,7 +137,7 @@ and paste the following to Raw Diff to get started:\n')
 
     click.echo('>>>>>>END\n')
 
-    if click.confirm(f'Do you also want to create a ticket?', default=True):
+    if click.confirm(f'Do you also want to create a ticket?', default=False):
         createTicket(username, publickey, ipAddress)
         return
 
