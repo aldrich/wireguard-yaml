@@ -3,10 +3,10 @@ import click
 import difflib
 import git
 import ipaddress
+import os
 import re
 import ruamel.yaml
 import sys
-
 from phabricator import Phabricator
 from ruamel.yaml.main import round_trip_dump, round_trip_load
 from typing import OrderedDict
@@ -15,16 +15,18 @@ from typing import OrderedDict
 puppetRoot = '/Users/aldrichco/Work/puppet'
 phabAPIToken = "api-7unflhaiccokaom4dzbavawvzoyo"
 phabHost = "https://phabricator.tools.flnltd.com/api/"
-phab = Phabricator(host=phabHost, token=phabAPIToken)
 wireguardManifestFilePath = "manifests/hieradata/role/wireguard_server.yaml"
 repository = "rPP"
 commit = "HEAD"
-
-# new tickets are tagged with the following projects
-projectPHIDs = [
-    'PHID-PROJ-z4lum22ekior7wxtn7ub',  # access
-    'PHID-PROJ-3ecog2unqfikccogkaeb',  # systems_engineering
+projectPHIDs = [  # new tickets are tagged with the following projects
+    # 'PHID-PROJ-z4lum22ekior7wxtn7ub',  # access
+    # 'PHID-PROJ-3ecog2unqfikccogkaeb',  # systems_engineering
 ]
+
+
+# Globals
+phab = Phabricator(host=phabHost, token=phabAPIToken)
+repo = git.Repo(puppetRoot)
 
 
 def getWireGuardServerYamlFile():
@@ -65,9 +67,6 @@ def getNextValidIpAddress(peersYamlObj):
     return None
 
 
-@click.command()
-@click.option('-u', '--username', prompt='Username', help='Phabricator username of the staff requesting vpn.')
-@click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
 def generateDiff(username, publickey):
 
     fileContents = getWireGuardManifestFileContents().decode('utf-8')
@@ -97,15 +96,15 @@ def generateDiff(username, publickey):
         'IPAddress': ipAddress
     })
 
-    str = round_trip_dump(code, block_seq_indent=2,
-                          explicit_start=True)
+    fileContents = round_trip_dump(code, block_seq_indent=2,
+                                   explicit_start=True)
 
     # surround the values with single quotes.
     # r'PublicKey: ([a-zA-Z0-9+=/]+)'
-    str = re.sub(r'PublicKey: ([a-zA-Z0-9+=/]+)',
-                 f'PublicKey: \'{publickey}\'', str)
-    str = re.sub(r'IPAddress: ([0-9.]+)',
-                 f'IPAddress: \'{ipAddress}\'', str)
+    fileContents = re.sub(r'PublicKey: ([a-zA-Z0-9+=/]+)',
+                          f'PublicKey: \'{publickey}\'', fileContents)
+    fileContents = re.sub(r'IPAddress: ([0-9.]+)',
+                          f'IPAddress: \'{ipAddress}\'', fileContents)
 
     if username in peersList and not click.confirm(f'The username \'{username}\' already exists in \
 the Wireguard peers registry, continue?', default=False):
@@ -115,32 +114,74 @@ the Wireguard peers registry, continue?', default=False):
     click.echo(f'The next valid IP Address in the subrange 10.3.128.1/17 \
 appears to be: {ipAddress}')
 
-    path1 = 'a/manifests/hieradata/role/wireguard_server.yaml'
-    path2 = 'b/manifests/hieradata/role/wireguard_server.yaml'
-
-    # array of lines.
-    diff = difflib.unified_diff(
-        fileContents.splitlines(),
-        str.splitlines(),
-        path1,
-        path2
-    )
-
-    click.echo('-------- Here\'s the body of the raw diff ---------\n')
-    click.echo('Go to https://phabricator.tools.flnltd.com/differential/diff/create/ \
-and paste the following to Raw Diff to get started:\n')
-    click.echo(
-        '>>>>>> COPY EVERY LINE BELOW, UNTIL BUT NOT INCLUDING THE LINE WITH THE ">>>>>>END" MARKER')
-
-    print('diff --git %s %s' % (path1, path2))
-    for line in diff:
-        click.echo(line.rstrip())
-
-    click.echo('>>>>>>END\n')
-
-    if click.confirm(f'Do you also want to create a ticket?', default=False):
-        createTicket(username, publickey, ipAddress)
+    path = puppetRoot
+    if os.path.isdir(path):
+        path = os.path.join(path, wireguardManifestFilePath)
+    else:
+        click.echo(
+            'Not a directory! Please correctly specify the puppet repo root.')
         return
+
+    if not os.path.isfile(path):
+        click.echo(f'Unable to open {path}, is it a file?')
+        return
+
+    wireguardManifest = open(path, "w")
+    wireguardManifest.write(fileContents)
+    wireguardManifest.close()
+
+    click.echo(
+        f'Updated file {wireguardManifestFilePath}.')
+
+    ticketId = None
+    if click.confirm(f'Do you also want to create a ticket?', default=False):
+        ticketId = createTicket(username, publickey, ipAddress)
+
+    commitChanges(username=username, ticketId=ticketId)
+
+    os.chdir(puppetRoot)
+    os.system('arc diff --browse --create --draft --nolint \
+--skip-staging --nounit --verbatim')
+
+
+def commitChanges(username, ticketId):
+    repo.index.add([wireguardManifestFilePath])
+    # Commit (and diff) title
+    commitMessage = f'[TEST] VPN request for @{username}.'
+    commitMessage += '\n\nSummary: This adds a wireguard peer entry for {username}.'
+    if ticketId is not None:
+        commitMessage += f'\n\nRef T{ticketId}'
+    commitMessage += '\n\nTest Plan: peer review'
+    repo.index.commit(commitMessage)
+    click.echo('Successfully committed changes')
+
+
+def createADifferential():
+    #    create a diff.
+    #     path1 = 'a/manifests/hieradata/role/wireguard_server.yaml'
+    #     path2 = 'b/manifests/hieradata/role/wireguard_server.yaml'
+
+    #     # array of lines.
+    #     diff = difflib.unified_diff(
+    #         fileContents.splitlines(),
+    #         str.splitlines(),
+    #         path1,
+    #         path2
+    #     )
+
+    #     click.echo('-------- Here\'s the body of the raw diff ---------\n')
+    #     click.echo('Go to https://phabricator.tools.flnltd.com/differential/diff/create/ \
+    # and paste the following to Raw Diff to get started:\n')
+    #     click.echo(
+    #         '>>>>>> COPY EVERY LINE BELOW, UNTIL BUT NOT INCLUDING THE LINE WITH THE ">>>>>>END" MARKER')
+
+    #     print('diff --git %s %s' % (path1, path2))
+    #     for line in diff:
+    #         click.echo(line.rstrip())
+
+    #     click.echo('>>>>>>END\n')
+
+    pass
 
 
 def createTicket(username, publickey, ipaddress):
@@ -173,34 +214,54 @@ I would like VPN access for {username}. This is the Wireguard public key: `{publ
     result = phab.maniphest.edit(transactions=transactions)
     ticketId = result.response['object']['id']
     click.echo(
-        f'Maniphest ticket created. Go to https://phabricator.tools.flnltd.com/T{ticketId} \
-and link it to the created revision.')
+        f'Maniphest ticket created at https://phabricator.tools.flnltd.com/T{ticketId}')
+    return ticketId
 
 
-def cli():
-    # generateDiff()
-
-    gitOps('aco22')
-
-
-# https://www.devdungeon.com/content/working-git-repositories-python
-def gitOps(username):
-    click.echo('Gonna commit the changes you make with python!')
-
+@click.command()
+@click.option('--username', '-u', prompt='Username', help='Phabricator username of the staff requesting vpn.')
+@click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
+def cli(username, publickey):
     try:
-        repo = git.Repo(puppetRoot)
-    except:
-        click.echo('Unable to find the puppet repo. Terminating')
+        createNewBranchInRepo(username, pull=False)
+    except AssertionError as error:
+        click.echo(f'There was an exception preparing the rPP repo. \
+    Please fix the issue externally and then try again: {error}')
         return
 
-    if repo.is_dirty(untracked_files=True):
-        click.echo(
-            'there are changes. Please make sure to clean them up first and then try again.')
-        return
+    generateDiff(username, publickey)
 
-    # go to master
-    # check if it's
-    # switch to new branch, off master
+
+def createNewBranchInRepo(username, pull=True):
+    """ This function locates the puppet repo, updates the master branch,
+    and creates a new branch with the named after the user in the param.
+    This prepares the branch to be the staging area for the diff.
+    """
+    url = repo.remotes[0].config_reader.get('url')
+    repoName = os.path.splitext(os.path.basename(url))[0]
+    assert repoName == 'puppet', 'Repo name should be puppet'
+
+    assert not repo.is_dirty(
+        untracked_files=True), 'Repository is dirty. Please make sure \
+the repository is clean (by doing a `git stash` or `git reset --hard`).'
+
+    click.echo(f'Repo `{repoName}` located, is clean')
+
+    click.echo('Checking out master branch')
+    repo.heads.master.checkout()
+    assert not repo.head.is_detached, 'Repository head is detached. Please switch to master.'
+
+    if pull:
+        click.echo('Switched to master branch. Pulling latest')
+        repo.remotes.origin.pull()
+
+    # create a new branch ...
+    branchName = f'wireguard/vpn_request_{username}'
+    newBranch = repo.create_head(branchName)
+    assert repo.active_branch != newBranch, 'Branch names don\'t match'
+
+    newBranch.checkout()
+    click.echo(f'Created and switched to `{branchName}`')
 
 
 if __name__ == '__main__':
