@@ -19,9 +19,6 @@ WireguardManifestFilePath = ''
 RepositoryName = ''
 RepositoryCommit = ''
 PHIDsOfProjectsToNotify = []  # new tickets are tagged with the following projects
-# Reinitialize these after loading config variables
-phab = Phabricator()
-repo = git.Repo()
 
 
 def getWireGuardServerYamlFile(phab):
