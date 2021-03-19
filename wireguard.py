@@ -242,6 +242,10 @@ def loadConfig():
     projects = config['Projects_To_Tag']
     PHIDsOfProjectsToNotify = [projects[slug] for slug in projects.keys()]
 
+    repo = git.Repo(PuppetRoot)
+    phab = Phabricator(host=PhabricatorHost, token=PhabricatorAPIToken)
+    return (repo, phab)
+
 
 def createNewBranchInRepo(repo, username, pull=True):
     """ This function locates the puppet repo, updates the master branch,
@@ -281,10 +285,7 @@ the repository is clean (by doing a `git stash` or `git reset --hard`).'
 @click.option('--username', '-u', prompt='Username', help='Phabricator username of the staff requesting vpn.')
 @click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
 def cli(username, publickey):
-    loadConfig()
-
-    repo = git.Repo(PuppetRoot)
-    phab = Phabricator(host=PhabricatorHost, token=PhabricatorAPIToken)
+    (repo, phab) = loadConfig()
 
     try:
         createNewBranchInRepo(repo, username, pull=False)
