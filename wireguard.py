@@ -21,23 +21,6 @@ RepositoryCommit = ''
 PHIDsOfProjectsToNotify = []  # new tickets are tagged with the following projects
 
 
-def getWireGuardServerYamlFile(phab):
-    # Use the Phabricator API to locate a file in a repository.
-    file = phab.diffusion.filecontentquery(
-        path=WireguardManifestFilePath, repository=RepositoryName, commit=RepositoryCommit)
-
-    # Use the Phabricator API to download the file.
-    # maybe also check if the file exists.
-    return phab.file.download(phid=file.filePHID)
-
-
-def getWireGuardManifestFileContents(phab):
-    click.echo('Fetching Wireguard maniphest YAML file from Phabricator API...')
-    encodedFileContents = getWireGuardServerYamlFile(phab).response
-    fileContents = base64.b64decode(encodedFileContents)
-    return fileContents
-
-
 def getNextValidIpAddress(peersYamlObj):
     # You will need to pick an IP address within the iprange 10.3.128.1/17
     # (10.3.128.1 - 10.3.255.254), which does not already belong to a
@@ -61,9 +44,13 @@ def getNextValidIpAddress(peersYamlObj):
 
 def generateDiff(phab, repo, username, publickey):
 
-    fileContents = getWireGuardManifestFileContents(phab).decode('utf-8')
+    path = PuppetRoot
+    if os.path.isdir(path):
+        path = os.path.join(path, WireguardManifestFilePath)
 
-    # TESTING with ruamel.yaml
+    f = open(path, 'r')
+    fileContents = f.read()
+
     code = round_trip_load(fileContents, preserve_quotes=True)
 
     # make the modifications
@@ -126,10 +113,14 @@ appears to be: {ipAddress}')
         f'Updated file {WireguardManifestFilePath}.')
 
     ticketId = None
-    if click.confirm(f'Do you also want to create a ticket?', default=True):
+
+    if click.confirm(f'Would you like to create a ticket?', default=True):
         ticketId = createTicket(phab, username, publickey, ipAddress)
 
     commitChanges(repo, username=username, ticketId=ticketId)
+
+    if not click.confirm(f'Proceed with creating a diff?', default=True):
+        return
 
     # execute arc diff to prepare a diff for a syseng reviewer.
     os.chdir(PuppetRoot)
@@ -249,7 +240,7 @@ def createNewBranchInRepo(repo, username, pull=True):
     and creates a new branch with the named after the user in the param.
     This prepares the branch to be the staging area for the diff.
     """
-    click.echo(PuppetRoot)
+    click.echo(f'Puppet root: {PuppetRoot}')
     url = repo.remotes[0].config_reader.get('url')
     repoName = os.path.splitext(os.path.basename(url))[0]
     click.echo(url)
@@ -271,6 +262,16 @@ the repository is clean (by doing a `git stash` or `git reset --hard`).'
 
     # create a new branch ...
     branchName = f'wireguard/vpn_request_{username}'
+
+    # check if branch with that name already exists
+    if branchName in [head.name for head in repo.heads]:
+        if click.confirm(f'Delete the existing branch "{branchName}"? Responding "no" will \
+end the script.', default=True):
+            repo.git.branch('-D', branchName)
+
+        else:
+            assert False, f'Branch "{branchName}" exists, please remove it before rerunning the script.'
+
     newBranch = repo.create_head(branchName)
     assert repo.active_branch != newBranch, 'Branch names don\'t match'
 
@@ -278,9 +279,9 @@ the repository is clean (by doing a `git stash` or `git reset --hard`).'
     click.echo(f'Created and switched to `{branchName}`')
 
 
-@click.command()
-@click.option('--username', '-u', prompt='Username', help='Phabricator username of the staff requesting vpn.')
-@click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
+@ click.command()
+@ click.option('--username', '-u', prompt='Username', help='Phabricator username of the staff requesting vpn.')
+@ click.option('--publickey', '-k', prompt='Wireguard Public Key', help='A Wireguard public key shared by user')
 def cli(username, publickey):
     (repo, phab) = loadConfig()
 
