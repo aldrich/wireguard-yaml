@@ -134,7 +134,7 @@ appears to be: {ipAddress}')
 def commitChanges(repo, username, ticketId):
     repo.index.add([WireguardManifestFilePath])
     # Commit (and diff) title
-    commitMessage = f'[TEST] Make @{username} a Wireguard VPN peer'
+    commitMessage = f'Make @{username} a Wireguard VPN peer'
     commitMessage += f'\n\nSummary: This adds a wireguard peer entry for \
 @{username} in `{WireguardManifestFilePath}`.'
     if ticketId is not None:
@@ -159,7 +159,7 @@ The following is the public key to be registered with the Wireguard server (whic
     transactions = [
         {
             'type': 'title',
-            'value': f'[TEST] VPN Request for @{username}',
+            'value': f'VPN Request for @{username}',
         },
         {
             'type': 'description',
